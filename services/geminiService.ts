@@ -1,15 +1,7 @@
-
 import { GoogleGenAI, Chat } from "@google/genai";
 
-const API_KEY = process.env.API_KEY;
-
-if (!API_KEY) {
-  // In a real app, you'd want to handle this more gracefully.
-  // For this context, we assume the key is available.
-  console.warn("API_KEY environment variable not set.");
-}
-
-const ai = new GoogleGenAI({ apiKey: API_KEY! });
+// fix: Adhere to Gemini API guidelines by using process.env.API_KEY directly for initialization and remove manual API key handling. This also resolves the TypeScript error on `import.meta.env`.
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
 
 const chat: Chat = ai.chats.create({
   model: 'gemini-2.5-flash',
