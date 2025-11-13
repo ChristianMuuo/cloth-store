@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 
 interface HeaderProps {
   cartItemCount: number;
@@ -9,6 +9,19 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ cartItemCount, onSearchChange, onCheckout }) => {
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(() => {
+      onSearchChange(searchTerm);
+    }, 300); // 300ms delay
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchTerm, onSearchChange]);
+
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(e.target.value);
+  };
   
   return (
     <header className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-md shadow-sm sticky top-0 z-40">
@@ -25,7 +38,8 @@ export const Header: React.FC<HeaderProps> = ({ cartItemCount, onSearchChange, o
                 type="search"
                 placeholder="Search products..."
                 aria-label="Search products"
-                onChange={(e) => onSearchChange(e.target.value)}
+                value={searchTerm}
+                onChange={handleSearchChange}
                 className="bg-gray-100 dark:bg-gray-800 border-transparent focus:ring-2 focus:ring-indigo-500 focus:border-transparent rounded-full py-2 pl-4 pr-10 w-64 transition-all duration-300 focus:w-80"
               />
               <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
@@ -69,7 +83,8 @@ export const Header: React.FC<HeaderProps> = ({ cartItemCount, onSearchChange, o
                 type="search"
                 placeholder="Search products..."
                 aria-label="Search products"
-                onChange={(e) => onSearchChange(e.target.value)}
+                value={searchTerm}
+                onChange={handleSearchChange}
                 className="bg-gray-100 dark:bg-gray-800 border-transparent focus:ring-2 focus:ring-indigo-500 focus:border-transparent rounded-full py-2 px-4 w-full mb-4"
               />
             <a href="#" className="block py-2 text-gray-600 dark:text-gray-300 hover:text-indigo-500">Home</a>
