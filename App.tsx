@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Product, Notification } from './types';
+import { Product, Notification, CartItem } from './types';
 import { PRODUCTS } from './constants';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
@@ -9,6 +8,7 @@ import { Offers } from './components/Offers';
 import { ProductCard } from './components/ProductCard';
 import { ProductModal } from './components/ProductModal';
 import { FashionAssistant } from './components/FashionAssistant';
+import { CartModal } from './components/CartModal';
 
 const useLocalStorage = <T,>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] => {
   const [storedValue, setStoredValue] = useState<T>(() => {
@@ -38,12 +38,44 @@ const App: React.FC = () => {
     const [selectedCategory, setSelectedCategory] = useState<string>('all');
     const [searchTerm, setSearchTerm] = useState<string>('');
     
-    const [cart, setCart] = useLocalStorage<Product[]>('cart', []);
+    const [cart, setCart] = useLocalStorage<CartItem[]>('cart', []);
     const [wishlist, setWishlist] = useLocalStorage<number[]>('wishlist', []);
     const [theme, setTheme] = useLocalStorage<'light' | 'dark'>('theme', 'light');
 
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
     const [notifications, setNotifications] = useState<Notification[]>([]);
+    const [isCartOpen, setIsCartOpen] = useState(false);
+
+    const absolutePriceRange = useMemo(() => {
+        if (products.length === 0) return { min: 0, max: 1000 };
+        const prices = products.map(p => p.price);
+        return {
+            min: Math.floor(Math.min(...prices)),
+            max: Math.ceil(Math.max(...prices))
+        };
+    }, [products]);
+
+    const categoryPriceRange = useMemo(() => {
+        const relevantProducts = products.filter(product => {
+            return selectedCategory === 'all' || product.categories.includes(selectedCategory);
+        });
+
+        if (relevantProducts.length === 0) {
+            return absolutePriceRange;
+        }
+
+        const prices = relevantProducts.map(p => p.price);
+        return {
+            min: Math.floor(Math.min(...prices)),
+            max: Math.ceil(Math.max(...prices))
+        };
+    }, [products, selectedCategory, absolutePriceRange]);
+
+    const [priceRange, setPriceRange] = useState<{min: number; max: number}>(categoryPriceRange);
+    
+    useEffect(() => {
+        setPriceRange(categoryPriceRange);
+    }, [categoryPriceRange]);
 
     useEffect(() => {
         if (theme === 'dark') {
@@ -53,21 +85,48 @@ const App: React.FC = () => {
         }
     }, [theme]);
 
-    const addNotification = (message: string, type: Notification['type']) => {
+    const addNotification = useCallback((message: string, type: Notification['type']) => {
         const newNotification: Notification = { id: Date.now(), message, type };
         setNotifications(prev => [...prev, newNotification]);
         setTimeout(() => {
             setNotifications(n => n.filter(notif => notif.id !== newNotification.id));
         }, 3000);
-    };
+    }, []);
 
     const handleAddToCart = useCallback((product: Product, quantity: number = 1) => {
         setCart(prevCart => {
-            // For simplicity, we just add new items. A real cart would handle quantities.
-            const newItems = Array(quantity).fill(product);
-            return [...prevCart, ...newItems];
+            const existingItem = prevCart.find(item => item.id === product.id);
+            if (existingItem) {
+                return prevCart.map(item =>
+                    item.id === product.id
+                        ? { ...item, quantity: item.quantity + quantity }
+                        : item
+                );
+            } else {
+                return [...prevCart, { ...product, quantity }];
+            }
         });
         addNotification(`${quantity} x ${product.name} added to cart!`, 'success');
+    }, [setCart, addNotification]);
+    
+    const handleUpdateCartQuantity = useCallback((productId: number, quantity: number) => {
+        setCart(prevCart => {
+            if (quantity <= 0) {
+                return prevCart.filter(item => item.id !== productId);
+            }
+            return prevCart.map(item =>
+                item.id === productId ? { ...item, quantity } : item
+            );
+        });
+    }, [setCart]);
+
+    const handleRemoveFromCart = useCallback((productId: number) => {
+        setCart(prevCart => prevCart.filter(item => item.id !== productId));
+        addNotification('Item removed from cart.', 'info');
+    }, [setCart, addNotification]);
+
+    const handleClearCart = useCallback(() => {
+        setCart([]);
     }, [setCart]);
 
     const handleToggleWishlist = useCallback((productId: number) => {
@@ -80,17 +139,20 @@ const App: React.FC = () => {
                 return [...prev, productId];
             }
         });
-    }, [setWishlist]);
+    }, [setWishlist, addNotification]);
 
     const filteredProducts = useMemo(() => {
         return products.filter(product => {
             const matchesCategory = selectedCategory === 'all' || product.categories.includes(selectedCategory);
             const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) || product.description.toLowerCase().includes(searchTerm.toLowerCase());
-            return matchesCategory && matchesSearch;
+            const matchesPrice = product.price >= priceRange.min && product.price <= priceRange.max;
+            return matchesCategory && matchesSearch && matchesPrice;
         });
-    }, [products, selectedCategory, searchTerm]);
+    }, [products, selectedCategory, searchTerm, priceRange]);
 
-    const cartItemCount = cart.length;
+    const cartItemCount = useMemo(() => {
+        return cart.reduce((total, item) => total + item.quantity, 0);
+    }, [cart]);
 
     const toggleTheme = () => {
         setTheme(prev => prev === 'light' ? 'dark' : 'light');
@@ -98,11 +160,18 @@ const App: React.FC = () => {
 
     return (
         <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200 transition-colors duration-300">
-            <Header cartItemCount={cartItemCount} onSearchChange={setSearchTerm} onCheckout={() => addNotification("Checkout is not yet implemented.", "info")} />
+            <Header cartItemCount={cartItemCount} onSearchChange={setSearchTerm} onCheckout={() => setIsCartOpen(true)} />
             
             <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 <div className="flex flex-col lg:flex-row gap-8">
-                    <Sidebar selectedCategory={selectedCategory} onSelectCategory={setSelectedCategory} />
+                    <Sidebar 
+                        selectedCategory={selectedCategory} 
+                        onSelectCategory={setSelectedCategory}
+                        priceRange={priceRange}
+                        onPriceChange={setPriceRange}
+                        minPrice={categoryPriceRange.min}
+                        maxPrice={categoryPriceRange.max}
+                    />
                     
                     <section className="lg:w-3/4 space-y-8">
                         <Carousel />
@@ -145,6 +214,16 @@ const App: React.FC = () => {
                 onAddToCart={handleAddToCart}
                 onToggleWishlist={handleToggleWishlist}
                 isInWishlist={!!selectedProduct && wishlist.includes(selectedProduct.id)}
+            />
+
+            <CartModal
+                isOpen={isCartOpen}
+                onClose={() => setIsCartOpen(false)}
+                cartItems={cart}
+                onUpdateQuantity={handleUpdateCartQuantity}
+                onRemoveItem={handleRemoveFromCart}
+                onClearCart={handleClearCart}
+                onSuccessfulCheckout={() => addNotification('Your order has been placed!', 'success')}
             />
 
             <div className="fixed bottom-6 left-6 z-40">
